@@ -38,7 +38,24 @@ jobs:
         run: python3 scripts/check_catalog.py
       - name: Check fingerprint loading regressions
         run: python3 scripts/check_icon_loader.py
-      - name: Assemble development APK
-        run: ./gradlew --no-daemon assembleDebug
+      - name: Restore persistent release keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.PRISMLOCK_KEYSTORE_B64 }}
+        run: |
+          KEYSTORE_PATH="$RUNNER_TEMP/prismlock.jks"
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$KEYSTORE_PATH"
+          echo "PRISMLOCK_KEYSTORE=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+      - name: Assemble signed release APK
+        env:
+          PRISMLOCK_STORE_PASSWORD: ${{ secrets.PRISMLOCK_STORE_PASSWORD }}
+          PRISMLOCK_KEY_PASSWORD: ${{ secrets.PRISMLOCK_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon assembleRelease
+      - name: Verify APK signature
+        run: $ANDROID_HOME/build-tools/36.0.0/apksigner verify --verbose app/build/outputs/apk/release/app-release.apk
+      - name: Upload release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: PrismLock-release-apk
+          path: app/build/outputs/apk/release/app-release.apk
       - name: Test update, catalog and modern hook flows
         run: ./gradlew --no-daemon testDebugUnitTest lintDebug
